@@ -1,14 +1,33 @@
 import * as path from 'path'
+import { dirnameWithoutDot } from './paths'
 
-interface Node {
-    segment: string
-    children: Node[]
-}
-
+/**
+ * TODO
+ *
+ * @param root TODO
+ * @param documentPaths TODO
+ */
 export function createBatcher(root: string, documentPaths: string[]): Generator<string[], void, string[]> {
     return traverse(createTree(root, documentPaths))
 }
 
+/**
+ * TODO
+ */
+interface Node {
+    /** TODO */
+    segment: string
+
+    /** TODO */
+    children: Node[]
+}
+
+/**
+ * TODO
+ *
+ * @param root TODO
+ * @param documentPaths TODO
+ */
 function createTree(root: string, documentPaths: string[]): Node {
     const dirs = Array.from(
         new Set(documentPaths.map(documentPath => dirnameWithoutDot(path.join(root, documentPath))))
@@ -37,6 +56,11 @@ function createTree(root: string, documentPaths: string[]): Node {
     return rootNode
 }
 
+/**
+ * TODO
+ *
+ * @param root TODO
+ */
 function* traverse(root: Node): Generator<string[], void, string[]> {
     let frontier: [string, Node[]][] = [['', root.children]]
 
@@ -49,13 +73,4 @@ function* traverse(root: Node): Generator<string[], void, string[]> {
                 children.map((child): [string, Node[]] => [path.join(parent, child.segment), child.children])
             )
     }
-}
-
-/**
- * Return the dirname of the given path. Returns empty string
- * if the path denotes a file in the current directory.
- */
-export function dirnameWithoutDot(pathname: string): string {
-    // TODO - move this function
-    return path.dirname(pathname) === '.' ? '' : path.dirname(pathname)
 }

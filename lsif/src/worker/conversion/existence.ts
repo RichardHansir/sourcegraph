@@ -2,7 +2,8 @@ import * as path from 'path'
 import { TracingContext, logAndTraceCall } from '../../shared/tracing'
 import { getDirectoryChildren } from '../../shared/gitserver/gitserver'
 import { createSilentLogger } from '../../shared/logging'
-import { createBatcher, dirnameWithoutDot } from './batch'
+import { createBatcher } from './batch'
+import { dirnameWithoutDot } from './paths'
 
 /**
  * Determines whether or not a document path within an LSIF upload should be visible
@@ -24,7 +25,6 @@ export class PathExistenceChecker {
     private ctx?: TracingContext
     private mockGetDirectoryChildren?: typeof getDirectoryChildren
     private directoryContents = new Map<string, Set<string>>()
-    private numGitserverRequests = 0
 
     /**
      * Create a new PathExistenceChecker.
@@ -81,10 +81,10 @@ export class PathExistenceChecker {
     }
 
     /**
-     * Warms the git directory cache by determining if each of the supplied paths
-     * exist in git. This function batches queries to gitserver to minimize the
-     * number of roundtrips during conversion. If no frontend url is configured,
-     * this method does nothing.
+     * Warms the git directory cache by determining if each of the supplied paths exist
+     * in git. This function batches queries to gitserver to minimize the number of
+     * roundtrips during conversion. If no frontend url is configured, this method does
+     * nothing.
      *
      * @param documentPaths A set of dump root-relative paths.
      */
@@ -99,17 +99,20 @@ export class PathExistenceChecker {
             async ({ logger = createSilentLogger() }) => {
                 const batcher = createBatcher(this.root, documentPaths)
                 let numBatches = 0
+                let numRequests = 0
                 let exists: string[] = []
 
                 while (true) {
-                    const { value, done } = batcher.next(exists)
-                    if (done || !value || value.length === 0) {
+                    const { value: batch, done } = batcher.next(exists)
+                    if (done || !batch || batch.length === 0) {
                         break
                     }
 
                     exists = []
                     numBatches++
-                    for (const dirname of value) {
+                    for (const dirname of batch) {
+                        numRequests++
+
                         // TODO - actually batch the requests
                         const children = await (this.mockGetDirectoryChildren || getDirectoryChildren)({
                             frontendUrl: this.frontendUrl,
@@ -118,18 +121,15 @@ export class PathExistenceChecker {
                             dirname,
                             ctx: this.ctx,
                         })
-
-                        this.numGitserverRequests++
                         this.directoryContents.set(dirname, children)
-
                         if (children.size > 0) {
                             exists.push(dirname)
                         }
                     }
                 }
 
-                logger.debug(`Performed ${numBatches} batch requests`)
-                logger.debug(`Performed ${this.numGitserverRequests} gitserver requests`)
+                // TODO - better logging
+                logger.debug(`Performed ${numBatches} batch requests and ${numRequests} total requests to gitserver`)
             }
         )
     }
